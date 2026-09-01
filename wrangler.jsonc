@@ -1,0 +1,37 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "wechat-price-api-dev",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "secrets": {
+    "required": ["WECHAT_TOKEN"]
+  },
+  "vars": {
+    "ENVIRONMENT": "local"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "env": {
+    "staging": {
+      "name": "wechat-price-api-staging",
+      "secrets": {
+        "required": ["WECHAT_TOKEN"]
+      },
+      "vars": {
+        "ENVIRONMENT": "staging"
+      }
+    },
+    "production": {
+      "name": "wechat-price-api",
+      "secrets": {
+        "required": ["WECHAT_TOKEN"]
+      },
+      "vars": {
+        "ENVIRONMENT": "production"
+      }
+    }
+  }
+}
