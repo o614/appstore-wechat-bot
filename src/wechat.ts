@@ -251,6 +251,7 @@ export async function handleWechat(
       : await dispatchCommand(parsed.command, {
           requestId: options.requestId,
           userKey,
+          state: options.state,
         });
 
   if (decision.kind === "silent") return emptyWechatResponse();

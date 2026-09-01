@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import worker from "../src/index";
 import type { MessageStateStore } from "../src/state";
@@ -69,7 +69,52 @@ async function sendTextMessage(
 
 beforeEach(() => {
   stateValues.clear();
+  vi.unstubAllGlobals();
 });
+
+function mockAppleSearch(): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const query = new URL(String(input)).searchParams.get("term") ?? "";
+    const app =
+      query.toLocaleLowerCase("en-US") === "chatgpt"
+        ? {
+            trackId: 6448311069,
+            trackName: "ChatGPT",
+            trackViewUrl: "https://apps.apple.com/us/app/chatgpt/id6448311069",
+            sellerName: "OpenAI OpCo, LLC",
+            currency: "USD",
+            formattedPrice: "Free",
+            price: 0,
+            averageUserRating: 4.8,
+            userRatingCount: 1_000_000,
+            fileSizeBytes: "254080000",
+            currentVersionReleaseDate: "2026-08-30T00:00:00Z",
+            minimumOsVersion: "17.0",
+            version: "1.2026.238",
+            primaryGenreName: "Productivity",
+          }
+        : {
+            trackId: 6477489729,
+            trackName: "Google Gemini",
+            trackViewUrl:
+              "https://apps.apple.com/us/app/google-gemini/id6477489729",
+            sellerName: "Google LLC",
+            currency: "USD",
+            formattedPrice: "Free",
+            price: 0,
+            averageUserRating: 4.7,
+            userRatingCount: 500_000,
+            fileSizeBytes: "300000000",
+            currentVersionReleaseDate: "2026-08-31T00:00:00Z",
+            minimumOsVersion: "16.0",
+            version: "1.2026.240",
+            primaryGenreName: "Productivity",
+          };
+    return Response.json({ resultCount: 1, results: [app] });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
 
 describe("App Store WeChat Bot foundation", () => {
   it("returns a healthy response with security headers", async () => {
@@ -79,7 +124,7 @@ describe("App Store WeChat Bot foundation", () => {
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       service: "appstore-wechat-bot",
-      version: "0.2.0",
+      version: "0.3.0",
       environment: "local",
     });
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
@@ -131,14 +176,53 @@ describe("App Store WeChat Bot foundation", () => {
     expect(body).not.toContain("应用查询功能正在准备中");
   });
 
-  it.each([
-    ["查询 ChatGPT", "应用查询功能正在准备中"],
-    ["内购 ChatGPT", "内购查询功能正在准备中"],
-    ["比价 ChatGPT", "订阅比价功能正在准备中"],
-  ])("routes %s to its isolated module", async (command, expected) => {
-    const response = await sendTextMessage(command, `route-${command}`);
+  it("returns the first official US result and renders both actions for app search", async () => {
+    const fetchMock = mockAppleSearch();
+    const response = await sendTextMessage("查询 Gemini", "search-gemini");
+    const body = await response.text();
 
-    await expect(response.text()).resolves.toContain(expected);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(body).toContain("Google Gemini");
+    expect(body).toContain("App ID：6477489729");
+    expect(body).toContain("开发者：Google LLC");
+    expect(body).toContain("内购 Google Gemini");
+    expect(body).toContain("比价 Google Gemini");
+    expect(body).not.toContain("Gemini Markets");
+  });
+
+  it("shows only the matching action for direct IAP or comparison entry", async () => {
+    mockAppleSearch();
+    const iap = await sendTextMessage("内购 Gemini", "direct-iap");
+    const iapBody = await iap.text();
+
+    expect(iapBody).toContain("内购 Google Gemini");
+    expect(iapBody).not.toContain("比价 Google Gemini");
+
+    stateValues.clear();
+    const compare = await sendTextMessage("比价 Gemini", "direct-compare");
+    const compareBody = await compare.text();
+
+    expect(compareBody).toContain("比价 Google Gemini");
+    expect(compareBody).not.toContain("内购 Google Gemini");
+  });
+
+  it("reuses one locked App ID for both action buttons without searching again", async () => {
+    const fetchMock = mockAppleSearch();
+    await sendTextMessage("查询 Gemini", "lock-search");
+
+    const iap = await sendTextMessage(
+      "内购 Google Gemini",
+      "lock-iap",
+    );
+    const compare = await sendTextMessage(
+      "比价 Google Gemini",
+      "lock-compare",
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await expect(iap.text()).resolves.toContain("App ID：6477489729");
+    await expect(compare.text()).resolves.toContain("App ID：6477489729");
+    expect(stateValues.size).toBeGreaterThan(0);
   });
 
   it("ignores a duplicate WeChat delivery", async () => {
