@@ -1,6 +1,6 @@
 {
   "name": "appstore-wechat-bot",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Cloudflare Worker backend for an App Store WeChat Official Account assistant.",
   "type": "module",

@@ -1,6 +1,6 @@
 import { handleWechat } from "./wechat";
 
-const VERSION = "0.3.0";
+const VERSION = "0.3.1";
 
 function securityHeaders(): Headers {
   return new Headers({

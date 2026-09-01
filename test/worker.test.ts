@@ -124,7 +124,7 @@ describe("App Store WeChat Bot foundation", () => {
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       service: "appstore-wechat-bot",
-      version: "0.3.0",
+      version: "0.3.1",
       environment: "local",
     });
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
@@ -188,6 +188,63 @@ describe("App Store WeChat Bot foundation", () => {
     expect(body).toContain("内购 Google Gemini");
     expect(body).toContain("比价 Google Gemini");
     expect(body).not.toContain("Gemini Markets");
+  });
+
+  it("uses the official page fallback when the Search API is rate limited", async () => {
+    const searchHtml = [
+      "<!doctype html>",
+      '<script type="application/json" id="serialized-server-data">',
+      JSON.stringify([
+        {
+          resultType: "lockup",
+          lockup: {
+            adamId: "6477489729",
+            title: "Google Gemini",
+            subtitle: "Google",
+          },
+        },
+        {
+          resultType: "lockup",
+          lockup: {
+            adamId: "1673276505",
+            title: "Gemini Markets & Credit Card",
+            subtitle: "Gemini Trust Company, LLC",
+          },
+        },
+      ]),
+      "</script>",
+    ].join("");
+    const detailHtml = [
+      "<!doctype html>",
+      '<script type="application/ld+json">',
+      JSON.stringify({
+        "@type": "SoftwareApplication",
+        name: "Google Gemini",
+        author: { name: "Google LLC" },
+        offers: { price: 0, priceCurrency: "USD" },
+        applicationCategory: "Productivity",
+      }),
+      "</script>",
+      '<script type="application/json" id="serialized-server-data">{}</script>',
+    ].join("");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.hostname === "itunes.apple.com") {
+        return new Response("rate limited", { status: 429 });
+      }
+      if (url.pathname === "/us/iphone/search") return new Response(searchHtml);
+      return new Response(detailHtml);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await sendTextMessage("查询 Gemini", "search-fallback");
+    const body = await response.text();
+
+    expect(body).toContain("Google Gemini");
+    expect(body).toContain("App ID：6477489729");
+    expect(body).toContain("开发者：Google LLC");
+    expect(body).not.toContain("Gemini Markets");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("shows only the matching action for direct IAP or comparison entry", async () => {

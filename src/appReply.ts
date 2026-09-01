@@ -46,6 +46,7 @@ function formatDate(value: string): string {
 function formatPrice(app: AppSummary): string {
   if (/^free$/iu.test(app.formattedPrice)) return "免费";
   if (app.formattedPrice) return app.formattedPrice;
+  if (app.price < 0 || !app.currency) return "未知";
   if (app.price === 0) return "免费";
   return `${app.currency} ${app.price.toFixed(2)}`.trim();
 }
