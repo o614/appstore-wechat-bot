@@ -38,6 +38,14 @@
     },
     "production": {
       "name": "appstore-wechat-bot",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [
+        {
+          "pattern": "wxbot.290935.xyz",
+          "custom_domain": true
+        }
+      ],
       "secrets": {
         "required": ["WECHAT_TOKEN"]
       },
