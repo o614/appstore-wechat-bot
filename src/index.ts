@@ -42,7 +42,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 
     const response = jsonResponse({
       ok: true,
-      service: "wechat-price-api",
+      service: "appstore-wechat-bot",
       version: VERSION,
       environment: env.ENVIRONMENT,
     });

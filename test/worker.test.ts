@@ -36,7 +36,7 @@ describe("phase-one Worker", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
-      service: "wechat-price-api",
+      service: "appstore-wechat-bot",
       environment: "local",
     });
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");

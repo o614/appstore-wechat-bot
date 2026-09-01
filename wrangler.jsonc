@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "wechat-price-api-dev",
+  "name": "appstore-wechat-bot-dev",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -16,7 +16,7 @@
   },
   "env": {
     "staging": {
-      "name": "wechat-price-api-staging",
+      "name": "appstore-wechat-bot-staging",
       "secrets": {
         "required": ["WECHAT_TOKEN"]
       },
@@ -25,7 +25,7 @@
       }
     },
     "production": {
-      "name": "wechat-price-api",
+      "name": "appstore-wechat-bot",
       "secrets": {
         "required": ["WECHAT_TOKEN"]
       },
