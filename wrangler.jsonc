@@ -10,6 +10,12 @@
   "vars": {
     "ENVIRONMENT": "local"
   },
+  "kv_namespaces": [
+    {
+      "binding": "BOT_STATE",
+      "id": "53804a1d969446ee9cd8ca54cd989ff9"
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
@@ -22,7 +28,13 @@
       },
       "vars": {
         "ENVIRONMENT": "staging"
-      }
+      },
+      "kv_namespaces": [
+        {
+          "binding": "BOT_STATE",
+          "id": "53804a1d969446ee9cd8ca54cd989ff9"
+        }
+      ]
     },
     "production": {
       "name": "appstore-wechat-bot",
@@ -31,7 +43,13 @@
       },
       "vars": {
         "ENVIRONMENT": "production"
-      }
+      },
+      "kv_namespaces": [
+        {
+          "binding": "BOT_STATE",
+          "id": "b9d52e61661e468e8f5e327486c6ca1e"
+        }
+      ]
     }
   }
 }

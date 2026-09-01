@@ -1,3 +1,11 @@
+import { parseCommand } from "./commands";
+import { dispatchCommand } from "./handlers";
+import {
+  anonymizeUserId,
+  claimWechatMessage,
+  type MessageStateStore,
+} from "./state";
+
 const MAX_WECHAT_BODY_BYTES = 64 * 1024;
 
 const textEncoder = new TextEncoder();
@@ -55,6 +63,40 @@ function extractXmlValue(xml: string, tag: string): string | null {
   return textMatch?.[1] ?? null;
 }
 
+interface IncomingTextMessage {
+  toUserName: string;
+  fromUserName: string;
+  content: string;
+  createTime: string;
+  messageId: string | null;
+}
+
+interface WechatHandlerOptions {
+  token: string;
+  state: MessageStateStore;
+  requestId: string;
+}
+
+function parseIncomingTextMessage(xml: string): IncomingTextMessage | null {
+  const toUserName = extractXmlValue(xml, "ToUserName");
+  const fromUserName = extractXmlValue(xml, "FromUserName");
+  const messageType = extractXmlValue(xml, "MsgType");
+  const content = extractXmlValue(xml, "Content");
+  const createTime = extractXmlValue(xml, "CreateTime") ?? "unknown";
+
+  if (!toUserName || !fromUserName || messageType !== "text" || content === null) {
+    return null;
+  }
+
+  return {
+    toUserName,
+    fromUserName,
+    content,
+    createTime,
+    messageId: extractXmlValue(xml, "MsgId"),
+  };
+}
+
 function toCdata(value: string): string {
   return `<![CDATA[${value.replaceAll("]]>", "]]]]><![CDATA[>")}]]>`;
 }
@@ -88,17 +130,44 @@ async function readBoundedText(request: Request): Promise<string | null> {
     return null;
   }
 
-  const body = await request.text();
-  return textEncoder.encode(body).byteLength <= MAX_WECHAT_BODY_BYTES ? body : null;
+  if (request.body === null) return "";
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_WECHAT_BODY_BYTES) {
+        await reader.cancel("payload_too_large");
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(body);
 }
 
 export async function handleWechat(
   request: Request,
-  token: string,
+  options: WechatHandlerOptions,
 ): Promise<Response> {
   const url = new URL(request.url);
   const validSignature = await verifyWechatSignature(
-    token,
+    options.token,
     url.searchParams.get("timestamp"),
     url.searchParams.get("nonce"),
     url.searchParams.get("signature"),
@@ -127,19 +196,69 @@ export async function handleWechat(
     return new Response("Payload too large", { status: 413 });
   }
 
-  const toUserName = extractXmlValue(xml, "ToUserName");
-  const fromUserName = extractXmlValue(xml, "FromUserName");
-  const messageType = extractXmlValue(xml, "MsgType");
-  const content = extractXmlValue(xml, "Content");
+  const message = parseIncomingTextMessage(xml);
+  if (!message) return emptyWechatResponse();
 
-  if (!toUserName || !fromUserName || messageType !== "text" || content === null) {
+  const userKey = await anonymizeUserId(message.fromUserName);
+  const parsed = parseCommand(message.content);
+  if (parsed.status === "ignored") {
+    console.log(
+      JSON.stringify({
+        event: "wechat_message_ignored",
+        requestId: options.requestId,
+        userKey,
+      }),
+    );
     return emptyWechatResponse();
   }
 
+  const messageIdentity =
+    message.messageId !== null
+      ? `${message.toUserName}:${message.messageId}`
+      : [
+          message.toUserName,
+          message.fromUserName,
+          message.createTime,
+          message.content,
+        ].join(":");
+
+  try {
+    const claimed = await claimWechatMessage(options.state, messageIdentity);
+    if (!claimed) {
+      console.log(
+        JSON.stringify({
+          event: "wechat_duplicate_ignored",
+          requestId: options.requestId,
+          userKey,
+        }),
+      );
+      return emptyWechatResponse();
+    }
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "wechat_state_unavailable",
+        requestId: options.requestId,
+        userKey,
+        error: error instanceof Error ? error.message : "unknown_error",
+      }),
+    );
+  }
+
+  const decision =
+    parsed.status === "invalid"
+      ? { kind: "reply" as const, content: parsed.reply }
+      : await dispatchCommand(parsed.command, {
+          requestId: options.requestId,
+          userKey,
+        });
+
+  if (decision.kind === "silent") return emptyWechatResponse();
+
   const reply = buildTextReply(
-    fromUserName,
-    toUserName,
-    `Cloudflare 通信测试成功\n\n你发送了：${content.trim()}`,
+    message.fromUserName,
+    message.toUserName,
+    decision.content,
   );
 
   return new Response(reply, {

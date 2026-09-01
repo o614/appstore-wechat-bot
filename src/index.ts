@@ -1,6 +1,6 @@
 import { handleWechat } from "./wechat";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 function securityHeaders(): Headers {
   return new Headers({
@@ -29,7 +29,11 @@ function jsonResponse(body: unknown, status = 200): Response {
   return Response.json(body, { status });
 }
 
-async function route(request: Request, env: Env): Promise<Response> {
+async function route(
+  request: Request,
+  env: Env,
+  requestId: string,
+): Promise<Response> {
   const url = new URL(request.url);
 
   if (url.pathname === "/health") {
@@ -52,7 +56,11 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
 
   if (url.pathname === "/wechat") {
-    return handleWechat(request, env.WECHAT_TOKEN);
+    return handleWechat(request, {
+      token: env.WECHAT_TOKEN,
+      state: env.BOT_STATE,
+      requestId,
+    });
   }
 
   return jsonResponse({ error: "not_found" }, 404);
@@ -65,7 +73,7 @@ export default {
     let response: Response;
 
     try {
-      response = await route(request, env);
+      response = await route(request, env, requestId);
     } catch (error) {
       console.error(
         JSON.stringify({
